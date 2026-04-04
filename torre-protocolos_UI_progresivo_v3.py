@@ -5,7 +5,6 @@ import argparse
 from scapy.all import Ether, Raw, wrpcap
 import binascii
 from pathlib import Path
-import re
 
 nivel=2
 indice=0
