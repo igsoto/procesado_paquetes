@@ -5,6 +5,7 @@ import argparse
 from scapy.all import Ether, Raw, wrpcap
 import binascii
 from pathlib import Path
+import re
 
 nivel=2
 indice=0
@@ -18,7 +19,7 @@ class GInterface:
         self.ventana.title("Análisis de Paquetes")
         
         # Configurar el tamaño de la ventana
-        self.ventana.geometry("680x790")
+        self.ventana.geometry("680x830")
         # Crear un Frame para dividir la ventana
         frame = tk.Frame(self.ventana)
         frame.pack(fill=tk.BOTH, expand=True)
@@ -131,7 +132,6 @@ def calcular_fcs(hex_str):
     fcs = binascii.crc32(data) & 0xffffffff
     return format(fcs, '08x')
 
-
 # Función para decodificar y mostrar los paquetes en la interfaz
 def procesar_paquetes(pkts, gui):
     
@@ -229,8 +229,8 @@ def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui):
             #texto=f"  HTTP: {paquete.http.request_method} {paquete.http.request_uri}\n"
         elif '1 200 OK\\r\\n' in paquete.http.field_names and 'file_data' in paquete.http.field_names: 
             texto=texto+f"\n    HTTP: 200 OK -> Se guarda contenido en salida{indice}.html\n"
-            with open("salida{indice}.html", "wb") as f:
-                f.write(bytes.fromhex(paquete.http.file_data.replace(':', '')))
+            with open(f"salida{indice}.html", "w") as f:
+                f.write(f"{paquete.http.file_data}")
         else:
             texto=texto+f"\n  HTTP: No es una petición ni una respuesta 200 OK con datos -> Fin de procesamiento\n"
             nivel=6
