@@ -228,8 +228,12 @@ def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui):
             #texto=f"  HTTP: {paquete.http.request_method} {paquete.http.request_uri}\n"
         elif '1 200 OK\\r\\n' in paquete.http.field_names and 'file_data' in paquete.http.field_names: 
             texto=texto+f"\n    HTTP: 200 OK -> Se guarda contenido en salida{indice}.html\n"
-            with open(f"salida{indice}.html", "w") as f:
-                f.write(f"{paquete.http.file_data}")
+            try: #Primero lo interpretamos como hexadecimal, si falla lo escribimos como string (depende de la versión de tshark)
+                with open("salida{indice}.html", "wb") as f:
+                    f.write(bytes.fromhex(paquete.http.file_data.replace(':', '')))
+            except:
+                with open(f"salida{indice}.html", "w") as f:
+                    f.write(f"{paquete.http.file_data}")
         else:
             texto=texto+f"\n  HTTP: No es una petición ni una respuesta 200 OK con datos -> Fin de procesamiento\n"
             nivel=6
