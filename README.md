@@ -8,7 +8,7 @@ pip install pyshark scapy
 ```
 
 ## Utilización
-Dado un fichero de entrada, que puede ser .pcap o .txt (con paquetes línea por línea en hexadecimal), hace una simulación del procesamiento del paquete y genera un fichero output.txt (si la entrada era .pcap) o output.pcap (si la entrada era .txt). El fichero generado añade la FCS Ethernet a las tramas en el fichero de salida, si no la tenían.
+Dado un fichero de entrada, que puede ser .pcap o .txt (con cada paquete en hexadecimal en una línea), hace una simulación del procesamiento del paquete y genera un fichero output.txt (si la entrada era .pcap) o output.pcap (si la entrada era .txt). El fichero generado añade la FCS Ethernet a las tramas en el fichero de salida, si no la tenían.
 
 
 Uso:
