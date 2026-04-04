@@ -7,12 +7,14 @@ Requiere la instalación de las librerías python:
 pip install pyshark scapy
 ```
 
-Dado un fichero de entrada, que puede ser .pcap o .txt (con paquetes línea por línea en hexadecimal), hace una simulación del procesamiento del paquete y genera un fichero output.txt (si la entrada era .pcap) o output.pcap (si la entrada era .txt). El fichero generado añade la FCS a las tramas en el fichero de salida, si no la tenían.
+## Utilización
+Dado un fichero de entrada, que puede ser .pcap o .txt (con paquetes línea por línea en hexadecimal), hace una simulación del procesamiento del paquete y genera un fichero output.txt (si la entrada era .pcap) o output.pcap (si la entrada era .txt). El fichero generado añade la FCS Ethernet a las tramas en el fichero de salida, si no la tenían.
 
 
 Uso:
 
 ```
 python torre-protocolos_UI_progresivo_v3.py [fichero.pcap ó fichero.txt]
+```
 
 Se incluyen capturas de ejemplo en el directorio capturas.
