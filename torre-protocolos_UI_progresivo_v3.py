@@ -8,7 +8,6 @@ from pathlib import Path
 
 nivel=2
 indice=0
-#btn_avanzar2 = None
 
 
 class GInterface:
@@ -61,13 +60,13 @@ class GInterface:
 def comprobar_extension(nombre_fichero, extension):
     return Path(nombre_fichero).suffix.lower() == extension.lower()
 
-def leer_captura(file):
+def leer_captura(file, streams):
     num_paquetes = 0
     # Comprobar archivo de entrada
     if comprobar_extension(file, ".pcap"):
         # Leer los paquetes del archivo pcap
         cap = pyshark.FileCapture(file, include_raw=True, use_json=True)
-        num_paquetes=pcap_a_hex(cap, "output.txt") 
+        num_paquetes=pcap_a_hex(cap, "output.txt", streams) 
         print(f"Archivo .pcap leído, convertido a .txt con {num_paquetes} paquetes")
         #for pkt in cap:
         #    num_paquetes += 1
@@ -75,34 +74,34 @@ def leer_captura(file):
     elif comprobar_extension(file, ".txt"):
         # Lo convertimos a pcap
         output_pcap = "output.pcap"        
-        hex_a_pcap(file, output_pcap)
+        hex_a_pcap(file, output_pcap, streams)
         # Leer los paquetes del archivo pcap convertido
-        cap = pyshark.FileCapture(output_pcap, include_raw=True, use_json=True) 
-        # num_paquetes = len(list(cap))   
+        cap = pyshark.FileCapture(output_pcap, include_raw=True, use_json=True)    
         for pkt in cap:
             num_paquetes += 1
         return { "cap": cap, "num_paquetes": num_paquetes }
     else:
         raise ValueError("El archivo no tiene la extensión .pcap ni .txt")
 
-def pcap_a_hex(cap, output_txt):
+def pcap_a_hex(cap, output_txt, streams):
     count = 0
     with open(output_txt, 'w') as f:
-        for pkt in cap:
+        for paquete in cap:
             try:
-                raw_hex = pkt.frame_raw.value  # hex string
-                if not hasattr(pkt.eth, 'fcs'):
+                raw_hex = paquete.frame_raw.value  # hex string
+                if not hasattr(paquete.eth, 'fcs'):
                     fcs_value = calcular_fcs(raw_hex)
                     raw_hex += fcs_value  # Añadir el FCS al final de la trama
                 count += 1
+                agregar_payload_multiples_segmentos(streams, paquete)
                 f.write(raw_hex + '\n')
             except AttributeError:
-                # Paquete sin raw (raro pero posible)
+                # Paquete sin raw (ocurre con tramas que no tienen cabecera Ethernet, como tramas de loopback), lo ignoramos
                 continue
     f.close()        
     return count
 
-def hex_a_pcap(input_txt, output_pcap):
+def hex_a_pcap(input_txt, output_pcap, streams):
     paquetes = []
 
     with open(input_txt, 'r') as f:
@@ -125,14 +124,31 @@ def hex_a_pcap(input_txt, output_pcap):
                 paquetes.append(pkt)
 
     wrpcap(output_pcap, paquetes)
+    #Tenemos que leer el pcap para poder procesar los payloads de varios segmentos TCP, ya que pyshark no permite acceder al payload de segmentos TCP fragmentados directamente desde el hex del raw.
+    cap = pyshark.FileCapture(output_pcap, include_raw=True, use_json=True)
+    for paquete in cap:
+        agregar_payload_multiples_segmentos(streams, paquete)
 
 def calcular_fcs(hex_str):
     data = bytes.fromhex(hex_str)
     fcs = binascii.crc32(data) & 0xffffffff
     return format(fcs, '08x')
 
+# Para todos los paquetes de la captura reconstruimos los payloads de cada stream TCP (payload en varios segmentos TCP)
+def agregar_payload_multiples_segmentos(streams, paquete):
+    if hasattr(paquete.tcp, 'stream'):
+        stream_id = paquete.tcp.stream
+        if hasattr(paquete.tcp, 'payload'): 
+            payload = bytes.fromhex(paquete.tcp.payload.replace(':', '')) 
+        else:
+            payload = b''
+        if stream_id in streams:
+            streams[stream_id] += payload
+        else:
+            streams[stream_id] = payload
+
 # Función para decodificar y mostrar los paquetes en la interfaz
-def procesar_paquetes(pkts, gui):
+def procesar_paquetes(pkts, gui, streams):
     
     paquetes = pkts["cap"]
     num_paquetes = pkts["num_paquetes"]
@@ -147,7 +163,7 @@ def procesar_paquetes(pkts, gui):
     btn_avanzar.config(state=tk.DISABLED) # Desactivar el botón mientras se procesan las cabeceras  
     paquete = paquetes[indice]
     gui.ventana.title(f"Análisis de Paquetes - Procesando Paquete {paquete.number} de {num_paquetes} paquetes")
-    btn_avanzar2 = tk.Button(gui.ventana, text="Procesar siguiente cabecera",  bg='orange', fg='black', font=('Arial', 12), command=lambda: procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui))
+    btn_avanzar2 = tk.Button(gui.ventana, text="Procesar siguiente cabecera",  bg='orange', fg='black', font=('Arial', 12), command=lambda: procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui, streams))
     btn_avanzar2.pack(pady=(0,10))
 
     indice += 1  
@@ -160,7 +176,7 @@ def procesar_paquetes(pkts, gui):
     #    ventana.after(5000, lambda: procesar_paquetes(paquetes, i))
     
 
-def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui):
+def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui, streams):
     global nivel
     global indice
 
@@ -234,6 +250,17 @@ def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui):
             except:
                 with open(f"salida{indice}.html", "w") as f:
                     f.write(f"{paquete.http.file_data}")
+        elif b"200 OK" in streams[paquete.tcp.stream]: # Tenemos datos fragmentados en varios segmentos TCP, los procesamos una vez. 
+            texto=texto+f"\n    HTTP: 200 OK, contenido recibido en varios segmentos TCP ->"
+            texto=texto+f"\n    Se guarda contenido en salida{indice}.html\n"
+            with open(f"salida{indice}.html", "w") as f:
+                separador2= b"\r\n\r\n"
+                separador1=b"200 OK"
+                data=streams[paquete.tcp.stream]                
+                partes=data.split(separador1, 1)
+                http_data=partes[1].split(separador2, 1)[1] if len(partes) > 1 else b''
+                with open(f"salida{indice}.html", "wb") as f:
+                    f.write(http_data)
         else:
             texto=texto+f"\n  HTTP: No es una petición ni una respuesta 200 OK con datos -> Fin de procesamiento\n"
             nivel=6
@@ -262,6 +289,7 @@ def procesado_cabeceras(paquete, num_paquetes, btn_avanzar2, gui):
     
     
 
+streams = {}
 
 parser = argparse.ArgumentParser(description="Leer fichero")
 parser.add_argument("fichero", help="Nombre del fichero a procesar")
@@ -271,9 +299,9 @@ args = parser.parse_args()
 gui=GInterface()
 
 # Leer el fichero .pcap o .txt con los paquetes
-pkts=leer_captura(args.fichero)
+pkts=leer_captura(args.fichero, streams)
 # Crear un botón para avanzar en el bucle
-btn_avanzar = tk.Button(gui.ventana, text="Procesar siguiente paquete", bg='green', fg='black', font=('Arial', 12), command=lambda: procesar_paquetes(pkts, gui))
+btn_avanzar = tk.Button(gui.ventana, text="Procesar siguiente paquete", bg='green', fg='black', font=('Arial', 12), command=lambda: procesar_paquetes(pkts, gui, streams))
 btn_avanzar.pack(pady=(0,10))
 gui.ventana.mainloop()
 
